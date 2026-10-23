@@ -1,0 +1,9 @@
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+
+def split_documents(documents):
+    splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+        chunk_size=300,
+        chunk_overlap=50,
+    )
+    return splitter.split_documents(documents)
