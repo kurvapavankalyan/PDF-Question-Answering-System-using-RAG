@@ -1,56 +1,59 @@
+from contextlib import asynccontextmanager
 
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
+from src.generator import generate_answer
 from src.pdf_loader import load_pdf
+from src.retriever import retrieve_documents
 from src.texsplit import split_documents
 from src.vector_store import vector_store
-from src.retriever import retrieve_documents
-from src.generator import generate_answer
 
 
-def main():
+class Question(BaseModel):
+    question: str
+
+
+def prepare_documents():
+    """Load the PDF and add its chunks to ChromaDB if the database is empty."""
     documents = load_pdf()
-    print(f"Loaded {len(documents)} pages from PDF.")
-
     chunks = split_documents(documents)
-    print(f"Created {len(chunks)} chunks.")
 
     if not chunks:
-        print("No text was extracted from the PDF.")
-        return
+        raise RuntimeError("No text was found in the PDF.")
 
     if vector_store._collection.count() == 0:
         vector_store.add_documents(chunks)
-        print("PDF chunks stored in ChromaDB.")
-    else:
-        print("Using existing ChromaDB data.")
-
-    while True:
-        try:
-            question = input("\nEnter your question (or type 'exit'): ")
-        except EOFError:
-            print("\nGoodbye!")
-            break
-
-        if question.strip().lower() == "exit":
-            print("Goodbye!")
-            break
-
-        if not question.strip():
-            print("Please enter a question.")
-            continue
-
-        retrieved_docs = retrieve_documents(question)
-
-        if not retrieved_docs:
-            print("No relevant information found.")
-            continue
-
-        context = "\n\n".join(doc.page_content for doc in retrieved_docs)
-
-        answer = generate_answer(context, question)
-
-        print("\nAnswer:")
-        print(answer)
 
 
-if __name__ == "__main__":
-    main()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Prepare the document once when the web server starts.
+    prepare_documents()
+    yield
+
+
+app = FastAPI(title="RAG API", lifespan=lifespan)
+
+
+@app.get("/health")
+def health():
+    """Check that the API is running."""
+    return {"status": "ok"}
+
+
+@app.post("/ask")
+def ask(question: Question):
+    """Find an answer in the PDF."""
+    text = question.question.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Please enter a question.")
+
+    documents = retrieve_documents(text)
+    if not documents:
+        return {"answer": "No relevant information found."}
+
+    context = "\n\n".join(document.page_content for document in documents)
+    answer = generate_answer(context, text)
+
+    return {"answer": answer}

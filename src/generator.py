@@ -1,12 +1,11 @@
 import os
-from pathlib import Path
 
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 
 from src.prompt import prompt
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+load_dotenv(".env")
 
 api_key = (
     os.getenv("OPENAI_API_KEY")
@@ -25,7 +24,7 @@ llm = ChatOpenAI(
     model="openai/gpt-4.1-mini",
     api_key=api_key,
     base_url=base_url,
-    temperature=0,
+    temperature=0.3,
     max_tokens=1024,
 )
 
